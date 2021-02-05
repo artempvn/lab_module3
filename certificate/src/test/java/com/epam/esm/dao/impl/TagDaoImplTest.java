@@ -1,22 +1,22 @@
 package com.epam.esm.dao.impl;
 
 import com.epam.esm.dao.CertificateDao;
-import com.epam.esm.dao.PaginationHandler;
 import com.epam.esm.dao.TagDao;
 import com.epam.esm.dto.CertificateDtoWithTags;
+import com.epam.esm.dto.PageData;
 import com.epam.esm.dto.PaginationParameter;
 import com.epam.esm.dto.TagDto;
 import com.epam.esm.exception.ResourceValidationException;
-import org.hibernate.Session;
-import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.orm.jpa.JpaSystemException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import javax.persistence.EntityManager;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -31,16 +31,13 @@ class TagDaoImplTest {
   public static final int NOT_EXISTED_TAG_ID = 9999999;
   @Autowired TagDao tagDao;
   @Autowired CertificateDao certificateDao;
-  @Autowired SessionFactory sessionFactory;
+  @Autowired EntityManager entityManager;
+  @Autowired TransactionTemplate txTemplate;
 
   @AfterEach
   void setDown() {
-    try (Session session = sessionFactory.openSession()) {
-      session.beginTransaction();
-      String sql = "DELETE FROM CERTIFICATES_TAGS;DELETE FROM tag;DELETE FROM gift_certificates";
-      session.createNativeQuery(sql).executeUpdate();
-      session.getTransaction().commit();
-    }
+    String sql = "DELETE FROM CERTIFICATES_TAGS;DELETE FROM tag;DELETE FROM gift_certificates";
+    txTemplate.execute(status -> entityManager.createNativeQuery(sql).executeUpdate());
   }
 
   @Test
@@ -72,14 +69,15 @@ class TagDaoImplTest {
   @Test
   void readAll() {
     TagDto tag1 = givenExistingTag1();
-    TagDto tag2 = givenExistingTag2();
     tagDao.create(tag1);
-    tagDao.create(tag2);
-    List<TagDto> expectedList = List.of(tag1, tag2);
+    List<TagDto> expectedList = List.of(tag1);
+    PaginationParameter parameter = new PaginationParameter();
+    parameter.setPage(1);
+    parameter.setSize(10);
 
-    List<TagDto> actualList = tagDao.readAll(new PaginationParameter());
+    PageData<TagDto> actualPage = tagDao.readAll(parameter);
 
-    assertEquals(expectedList.size(), actualList.size());
+    assertEquals(expectedList.size(), actualPage.getContent().size());
   }
 
   @Test
@@ -94,9 +92,8 @@ class TagDaoImplTest {
 
   @Test
   void deleteNotExisted() {
-    TagDto tag = givenExistingTag1();
 
-    assertThrows(ResourceValidationException.class, () -> tagDao.delete(tag.getId()));
+    assertThrows(ResourceValidationException.class, () -> tagDao.delete(NOT_EXISTED_TAG_ID));
   }
 
   @Test
@@ -107,7 +104,7 @@ class TagDaoImplTest {
     long certificateId = certificateDao.create(certificate).getId();
     certificateDao.addTag(tagId, certificateId);
 
-    assertThrows(JpaSystemException.class, () -> tagDao.delete(tagId));
+    assertThrows(DataIntegrityViolationException.class, () -> tagDao.delete(tagId));
   }
 
   @Test
@@ -130,11 +127,7 @@ class TagDaoImplTest {
   }
 
   private static TagDto givenExistingTag1() {
-    return TagDto.builder().id(1L).name("first tag").build();
-  }
-
-  private static TagDto givenExistingTag2() {
-    return TagDto.builder().id(2L).name("second tag").build();
+    return TagDto.builder().name("first tag").build();
   }
 
   private static TagDto givenNewTagWithoutId() {
@@ -143,7 +136,6 @@ class TagDaoImplTest {
 
   private static CertificateDtoWithTags givenExistingCertificate1() {
     return CertificateDtoWithTags.builder()
-        .id(1L)
         .name("first certificate")
         .description("first description")
         .price(1.33)

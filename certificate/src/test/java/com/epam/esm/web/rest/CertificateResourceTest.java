@@ -1,16 +1,13 @@
 package com.epam.esm.web.rest;
 
-import com.epam.esm.web.advice.ResourceAdvice;
 import com.epam.esm.dao.CertificateDao;
 import com.epam.esm.dao.TagDao;
 import com.epam.esm.dto.CertificateDtoPatch;
 import com.epam.esm.dto.CertificateDtoWithTags;
 import com.epam.esm.dto.CertificateDtoWithoutTags;
 import com.epam.esm.dto.TagDto;
-import com.epam.esm.web.rest.CertificateController;
+import com.epam.esm.web.advice.ResourceAdvice;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.hibernate.Session;
-import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,23 +20,27 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.servlet.LocaleResolver;
 
+import javax.persistence.EntityManager;
 import java.util.List;
 
+import static org.hamcrest.Matchers.contains;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @ActiveProfiles("certificate")
 @AutoConfigureTestDatabase
 @SpringBootTest
-class CertificateControllerTest {
+class CertificateResourceTest {
+  public static final long NOT_EXISTING_ID = 99999L;
   MockMvc mockMvc;
   @Autowired TagDao tagDao;
   @Autowired CertificateDao certificateDao;
-  @Autowired
-  CertificateController certificateController;
-  @Autowired SessionFactory sessionFactory;
+  @Autowired CertificateResource certificateController;
+  @Autowired EntityManager entityManager;
+  @Autowired TransactionTemplate txTemplate;
 
   @Autowired ReloadableResourceBundleMessageSource messageSource;
   @Autowired LocaleResolver localeResolver;
@@ -55,12 +56,8 @@ class CertificateControllerTest {
 
   @AfterEach
   void setDown() {
-    try (Session session = sessionFactory.openSession()) {
-      session.beginTransaction();
-      String sql = "DELETE FROM CERTIFICATES_TAGS;DELETE FROM tag;DELETE FROM gift_certificates";
-      session.createNativeQuery(sql).executeUpdate();
-      session.getTransaction().commit();
-    }
+    String sql = "DELETE FROM CERTIFICATES_TAGS;DELETE FROM tag;DELETE FROM gift_certificates";
+    txTemplate.execute(status -> entityManager.createNativeQuery(sql).executeUpdate());
   }
 
   @Test
@@ -73,11 +70,8 @@ class CertificateControllerTest {
 
   @Test
   void readCertificateNegativeStatusCheck() throws Exception {
-    CertificateDtoWithTags certificate1 = givenExistingCertificate1();
 
-    mockMvc
-        .perform(get("/certificates/{id}", certificate1.getId()))
-        .andExpect(status().isNotFound());
+    mockMvc.perform(get("/certificates/{id}", NOT_EXISTING_ID)).andExpect(status().isNotFound());
   }
 
   @Test
@@ -107,7 +101,7 @@ class CertificateControllerTest {
     certificateDao.create(certificate1);
     certificateDao.create(certificate2);
 
-    mockMvc.perform(get("/certificates")).andExpect(status().isOk());
+    mockMvc.perform(get("/certificates?page=1&size=10")).andExpect(status().isOk());
   }
 
   @Test
@@ -126,8 +120,13 @@ class CertificateControllerTest {
     c2.setLastUpdateDate(cert2.getLastUpdateDate());
 
     mockMvc
-        .perform(get("/certificates"))
-        .andExpect(content().json(new ObjectMapper().writeValueAsString(List.of(c1, c2))));
+        .perform(get("/certificates?page=1&size=10"))
+        .andExpect(jsonPath("$.currentPage").value(1))
+        .andExpect(jsonPath("$.content").isNotEmpty())
+        .andExpect(
+            jsonPath(
+                "$.links[?(@.rel=='self')].href",
+                contains("http://localhost/certificates?page=1&size=10")));
   }
 
   @Test
@@ -146,8 +145,14 @@ class CertificateControllerTest {
     c2.setLastUpdateDate(cert2.getLastUpdateDate());
 
     mockMvc
-        .perform(get("/certificates?name=cert"))
-        .andExpect(content().json(new ObjectMapper().writeValueAsString(List.of(c1, c2))));
+        .perform(get("/certificates?page=1&size=10&name=cert&sort.name=ASC&tags=tag1"))
+        .andExpect(jsonPath("$.currentPage").value(1))
+        .andExpect(jsonPath("$.content").isEmpty())
+        .andExpect(
+            jsonPath(
+                "$.links[?(@.rel=='self')].href",
+                contains(
+                    "http://localhost/certificates?page=1&size=10&tags=tag1&name=cert&sort.name=ASC")));
   }
 
   @Test
@@ -201,7 +206,7 @@ class CertificateControllerTest {
 
     mockMvc
         .perform(
-            put("/certificates/{id}", certificateUpdate.getId())
+            put("/certificates/{id}", NOT_EXISTING_ID)
                 .content(new ObjectMapper().writeValueAsString(certificateUpdate))
                 .contentType(MediaType.APPLICATION_JSON))
         .andExpect(status().isBadRequest());
@@ -247,7 +252,7 @@ class CertificateControllerTest {
 
     mockMvc
         .perform(
-            patch("/certificates/{id}", certificateUpdate.getId())
+            patch("/certificates/{id}", NOT_EXISTING_ID)
                 .content(new ObjectMapper().writeValueAsString(certificateUpdate))
                 .contentType(MediaType.APPLICATION_JSON))
         .andExpect(status().isBadRequest());
@@ -289,16 +294,14 @@ class CertificateControllerTest {
 
   @Test
   void deleteCertificateNegative() throws Exception {
-    CertificateDtoWithTags certificate = givenExistingCertificate1();
 
     mockMvc
-        .perform(delete("/certificates/{id}", certificate.getId()))
+        .perform(delete("/certificates/{id}", NOT_EXISTING_ID))
         .andExpect(status().isBadRequest());
   }
 
   private static CertificateDtoWithTags givenExistingCertificate1() {
     return CertificateDtoWithTags.builder()
-        .id(1L)
         .name("first certificate")
         .description("first description")
         .price(1.33)
@@ -308,7 +311,6 @@ class CertificateControllerTest {
 
   private static CertificateDtoWithTags givenExistingCertificate2() {
     return CertificateDtoWithTags.builder()
-        .id(2L)
         .name("second certificate")
         .description("second description")
         .price(2.33)
@@ -318,7 +320,6 @@ class CertificateControllerTest {
 
   private static CertificateDtoWithoutTags givenExistingCertificate1WT() {
     return CertificateDtoWithoutTags.builder()
-        .id(1L)
         .name("first certificate")
         .description("first description")
         .price(1.33)
@@ -328,7 +329,6 @@ class CertificateControllerTest {
 
   private static CertificateDtoWithoutTags givenExistingCertificate2WT() {
     return CertificateDtoWithoutTags.builder()
-        .id(2L)
         .name("second certificate")
         .description("second description")
         .price(2.33)
@@ -345,7 +345,6 @@ class CertificateControllerTest {
 
   private static CertificateDtoWithTags givenNewCertificateForUpdatePutId1() {
     return CertificateDtoWithTags.builder()
-        .id(1L)
         .name("new name")
         .description("first description")
         .price(1.33)
@@ -354,14 +353,14 @@ class CertificateControllerTest {
   }
 
   private static CertificateDtoWithTags givenNewCertificateForUpdateId1() {
-    return CertificateDtoWithTags.builder().id(1L).name("new name").build();
+    return CertificateDtoWithTags.builder().name("new name").build();
   }
 
   private static TagDto givenExistingTag1() {
-    return TagDto.builder().id(1L).name("first tag").build();
+    return TagDto.builder().name("first tag").build();
   }
 
   private static TagDto givenExistingTag2() {
-    return TagDto.builder().id(2L).name("second tag").build();
+    return TagDto.builder().name("second tag").build();
   }
 }

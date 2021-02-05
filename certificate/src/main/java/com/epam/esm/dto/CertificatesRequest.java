@@ -5,7 +5,7 @@ import java.util.List;
 
 public class CertificatesRequest {
 
-  private List<String> tags= Collections.emptyList();
+  private List<String> tags = Collections.emptyList();
   private String name;
   private String description;
   private SortParam sort;
@@ -50,6 +50,20 @@ public class CertificatesRequest {
     sb.append(", description='").append(description).append('\'');
     sb.append(", sort=").append(sort);
     sb.append('}');
+    return sb.toString();
+  }
+
+  public String toUrlString() {
+    final StringBuilder sb = new StringBuilder();
+    for (String tag : tags) {
+      sb.append(String.format("tags=%s&", tag));
+    }
+    sb.append(name != null ? String.format("name=%s&", name) : "");
+    sb.append(description != null ? String.format("description=%s&", description) : "");
+    if (sort != null) {
+      sb.append(sort.getDate() != null ? String.format("sort.date=%s&", sort.getDate()) : "");
+      sb.append(sort.getName() != null ? String.format("sort.name=%s&", sort.getName()) : "");
+    }
     return sb.toString();
   }
 }

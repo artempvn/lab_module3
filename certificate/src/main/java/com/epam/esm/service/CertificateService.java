@@ -1,11 +1,6 @@
 package com.epam.esm.service;
 
-import com.epam.esm.dto.CertificateDtoWithTags;
-import com.epam.esm.dto.CertificateDtoWithoutTags;
-import com.epam.esm.dto.CertificatesRequest;
-import com.epam.esm.dto.PaginationParameter;
-
-import java.util.List;
+import com.epam.esm.dto.*;
 
 /** The interface Certificate service. */
 public interface CertificateService {
@@ -27,12 +22,14 @@ public interface CertificateService {
   CertificateDtoWithTags read(long id);
 
   /**
-   * Read all list.
+   * Read all page data.
    *
-   * @param request the request
-   * @return the list
+   * @param request the request contains sorting and filtering staff
+   * @param parameter the parameter of pagination
+   * @return the page data
    */
-  List<CertificateDtoWithoutTags> readAll(CertificatesRequest request, PaginationParameter parameter);
+  PageData<CertificateDtoWithoutTags> readAll(
+      CertificatesRequest request, PaginationParameter parameter);
 
   /**
    * Update certificate dto with tags.

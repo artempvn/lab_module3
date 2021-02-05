@@ -1,17 +1,20 @@
 package com.epam.esm.dao.impl;
 
-import com.epam.esm.dao.*;
+import com.epam.esm.dao.CertificateDao;
+import com.epam.esm.dao.OrderDao;
+import com.epam.esm.dao.TagDao;
+import com.epam.esm.dao.UserDao;
 import com.epam.esm.dto.*;
 import com.epam.esm.exception.ResourceValidationException;
-import org.hibernate.Session;
-import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import javax.persistence.EntityManager;
 import java.util.List;
 import java.util.Optional;
 
@@ -27,18 +30,15 @@ class OrderDaoImplTest {
   @Autowired UserDao userDao;
   @Autowired CertificateDao certificateDao;
   @Autowired TagDao tagDao;
-  @Autowired SessionFactory sessionFactory;
+  @Autowired EntityManager entityManager;
+  @Autowired TransactionTemplate txTemplate;
 
   @AfterEach
   void setDown() {
-    try (Session session = sessionFactory.openSession()) {
-      session.beginTransaction();
-      String sql =
-              "DELETE FROM ordered_certificates_tags;DELETE FROM ordered_tags;DELETE FROM ordered_certificates;"
-                      + "DELETE FROM orders;DELETE FROM users;";
-      session.createNativeQuery(sql).executeUpdate();
-      session.getTransaction().commit();
-    }
+    String sql =
+        "DELETE FROM ordered_certificates_tags;DELETE FROM ordered_tags;DELETE FROM ordered_certificates;"
+            + "DELETE FROM orders;DELETE FROM users;";
+    txTemplate.execute(status -> entityManager.createNativeQuery(sql).executeUpdate());
   }
 
   @Test
@@ -72,17 +72,21 @@ class OrderDaoImplTest {
     order.setUserId(id);
     order.setCertificates(List.of(certificate1));
     orderDao.create(order);
+    PaginationParameter parameter = new PaginationParameter();
+    parameter.setPage(1);
+    parameter.setSize(10);
 
-    List<OrderDto> actualList = orderDao.readAllByUser(id,new PaginationParameter());
+    PageData<OrderDto> actualPage = orderDao.readAllByUser(id, parameter);
 
-    assertEquals(1, actualList.size());
+    assertEquals(1, actualPage.getContent().size());
   }
 
   @Test
   void readAllByNotExistingUser() {
 
     assertThrows(
-        ResourceValidationException.class, () -> orderDao.readAllByUser(NOT_EXISTING_USER_ID,new PaginationParameter()));
+        ResourceValidationException.class,
+        () -> orderDao.readAllByUser(NOT_EXISTING_USER_ID, new PaginationParameter()));
   }
 
   @Test
@@ -117,7 +121,8 @@ class OrderDaoImplTest {
     order.setUserId(userId);
     order.setCertificates(List.of(certificate1));
 
-    Optional<OrderDtoWithCertificates> actualOrder = orderDao.readOrderByUser(userId, NOT_EXISTING_ORDER_ID);
+    Optional<OrderDtoWithCertificates> actualOrder =
+        orderDao.readOrderByUser(userId, NOT_EXISTING_ORDER_ID);
 
     assertTrue(actualOrder.isEmpty());
   }
@@ -131,7 +136,8 @@ class OrderDaoImplTest {
   }
 
   OrderDtoWithCertificatesWithTagsForCreation givenOrder() {
-    OrderDtoWithCertificatesWithTagsForCreation order = new OrderDtoWithCertificatesWithTagsForCreation();
+    OrderDtoWithCertificatesWithTagsForCreation order =
+        new OrderDtoWithCertificatesWithTagsForCreation();
     var certificate = givenCertificate();
     order.setCertificates(List.of(certificate));
     return order;
@@ -139,7 +145,6 @@ class OrderDaoImplTest {
 
   UserDto givenUser() {
     UserDto user = new UserDto();
-    user.setId(1L);
     user.setName("name");
     user.setSurname("surname");
     return user;

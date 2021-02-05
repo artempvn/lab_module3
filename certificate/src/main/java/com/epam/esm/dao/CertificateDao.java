@@ -1,11 +1,7 @@
 package com.epam.esm.dao;
 
-import com.epam.esm.dto.CertificateDtoWithTags;
-import com.epam.esm.dto.CertificateDtoWithoutTags;
-import com.epam.esm.dto.CertificatesRequest;
-import com.epam.esm.dto.PaginationParameter;
+import com.epam.esm.dto.*;
 
-import java.util.List;
 import java.util.Optional;
 
 /** The interface Certificate dao. */
@@ -28,12 +24,14 @@ public interface CertificateDao {
   Optional<CertificateDtoWithTags> read(long id);
 
   /**
-   * Read all list.
+   * Read all page data.
    *
-   * @param request the request
-   * @return the list
+   * @param request the request contains sorting and filtering staff
+   * @param parameter the parameter of pagination
+   * @return the page data
    */
-  List<CertificateDtoWithoutTags> readAll(CertificatesRequest request, PaginationParameter parameter);
+  PageData<CertificateDtoWithoutTags> readAll(
+      CertificatesRequest request, PaginationParameter parameter);
 
   /**
    * Update.
@@ -62,7 +60,7 @@ public interface CertificateDao {
    *
    * @param tagId the tag id
    * @param certificateId the certificate id
-   * @return the int
+   * @return the int number of changed rows
    */
   int removeTag(long tagId, long certificateId);
 

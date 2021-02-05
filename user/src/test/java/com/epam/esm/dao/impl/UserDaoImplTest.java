@@ -1,19 +1,17 @@
 package com.epam.esm.dao.impl;
 
-import com.epam.esm.dao.PaginationHandler;
 import com.epam.esm.dao.UserDao;
-import com.epam.esm.dto.PaginationParameter;
-import com.epam.esm.dto.UserDtoWithOrders;
-import com.epam.esm.dto.UserDto;
-import org.hibernate.Session;
-import org.hibernate.SessionFactory;
+import com.epam.esm.dto.*;
+import com.epam.esm.service.OrderService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import javax.persistence.EntityManager;
 import java.util.List;
 import java.util.Optional;
 
@@ -25,19 +23,16 @@ import static org.junit.jupiter.api.Assertions.*;
 class UserDaoImplTest {
   public static final int NOT_EXISTING_USER_ID = 9999999;
   @Autowired UserDao userDao;
-
-  @Autowired SessionFactory sessionFactory;
+  @Autowired EntityManager entityManager;
+  @Autowired TransactionTemplate txTemplate;
+  @Autowired OrderService orderService;
 
   @AfterEach
   void setDown() {
-    try (Session session = sessionFactory.openSession()) {
-      session.beginTransaction();
-      String sql =
-              "DELETE FROM ordered_certificates_tags;DELETE FROM ordered_tags;DELETE FROM ordered_certificates;"
-                      + "DELETE FROM orders;DELETE FROM users;";
-      session.createNativeQuery(sql).executeUpdate();
-      session.getTransaction().commit();
-    }
+    String sql =
+        "DELETE FROM ordered_certificates_tags;DELETE FROM ordered_tags;DELETE FROM ordered_certificates;"
+            + "DELETE FROM orders;DELETE FROM users;";
+    txTemplate.execute(status -> entityManager.createNativeQuery(sql).executeUpdate());
   }
 
   @Test
@@ -73,10 +68,50 @@ class UserDaoImplTest {
     userDao.create(user1);
     userDao.create(user2);
     List<UserDto> expectedList = List.of(user1, user2);
+    PaginationParameter parameter = new PaginationParameter();
+    parameter.setPage(1);
+    parameter.setSize(10);
 
-    List<UserDto> actualList = userDao.readAll(new PaginationParameter());
+    PageData<UserDto> actualPage = userDao.readAll(parameter);
 
-    assertEquals(expectedList.size(), actualList.size());
+    assertEquals(expectedList.size(), actualPage.getContent().size());
+  }
+
+  @Test
+  void takeMostWidelyTagFromUserWithHighestCostOrders() {
+    UserDto userWithHighestCostOfOrders = givenUser1WO();
+    UserDto user = givenUser2WO();
+    long userHighestCostId = userDao.create(userWithHighestCostOfOrders).getId();
+    long userId = userDao.create(user).getId();
+    TagDto tag1 = TagDto.builder().name("tag1").build();
+    TagDto tag2 = TagDto.builder().name("tag2").build();
+    CertificateDtoWithTags certificate1 =
+        CertificateDtoWithTags.builder().price(9999.).tags(List.of(tag1, tag2)).build();
+    CertificateDtoWithTags certificate2 =
+        CertificateDtoWithTags.builder().price(1.).tags(List.of(tag1)).build();
+    OrderDtoWithCertificatesWithTagsForCreation order1 =
+        OrderDtoWithCertificatesWithTagsForCreation.builder()
+            .userId(userHighestCostId)
+            .certificates(List.of(certificate1, certificate2))
+            .build();
+    OrderDtoWithCertificatesWithTagsForCreation order2 =
+        OrderDtoWithCertificatesWithTagsForCreation.builder()
+            .userId(userHighestCostId)
+            .certificates(List.of(certificate2))
+            .build();
+    OrderDtoWithCertificatesWithTagsForCreation order3 =
+        OrderDtoWithCertificatesWithTagsForCreation.builder()
+            .userId(userId)
+            .certificates(List.of(certificate2))
+            .build();
+    orderService.create(order1);
+    orderService.create(order2);
+    orderService.create(order3);
+    String expectedTagName = tag1.getName();
+
+    String actualTagName = userDao.takeMostWidelyTagFromUserWithHighestCostOrders().getName();
+
+    assertEquals(expectedTagName, actualTagName);
   }
 
   UserDto givenUser1WO() {

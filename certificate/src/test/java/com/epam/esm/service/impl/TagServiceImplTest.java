@@ -4,6 +4,7 @@ import com.epam.esm.dao.CertificateDao;
 import com.epam.esm.dao.TagDao;
 import com.epam.esm.dao.entity.Certificate;
 import com.epam.esm.dto.CertificateDtoWithTags;
+import com.epam.esm.dto.PageData;
 import com.epam.esm.dto.TagAction;
 import com.epam.esm.dto.TagDto;
 import com.epam.esm.exception.ResourceIsBoundException;
@@ -13,7 +14,7 @@ import com.epam.esm.exception.ResourcesValidationException;
 import com.epam.esm.service.TagActionService;
 import com.epam.esm.service.TagService;
 import org.junit.jupiter.api.Test;
-import org.springframework.orm.jpa.JpaSystemException;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.util.Collections;
 import java.util.List;
@@ -67,7 +68,8 @@ class TagServiceImplTest {
   @Test
   void createIfNotExistedTagDaoCreateInvocation() {
     TagDto tag = TagDto.builder().id(TAG_ID).name("first tag").build();
-    when(tagDao.readAll(any())).thenReturn(Collections.emptyList());
+    PageData<TagDto> page = new PageData<>(1, 1, 1, Collections.emptyList());
+    when(tagDao.readAll(any())).thenReturn(page);
     when(tagDao.read(tag.getName())).thenReturn(Optional.empty());
     when(tagDao.create(tag)).thenReturn(new TagDto());
 
@@ -109,7 +111,7 @@ class TagServiceImplTest {
 
   @Test
   void deleteTagDaoDeleteBoundException() {
-    doThrow(JpaSystemException.class).when(tagDao).delete(anyLong());
+    doThrow(DataIntegrityViolationException.class).when(tagDao).delete(anyLong());
 
     assertThrows(ResourceIsBoundException.class, () -> tagService.delete(TAG_ID));
   }

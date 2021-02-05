@@ -2,12 +2,13 @@ package com.epam.esm.web.rest;
 
 import com.epam.esm.dao.OrderDao;
 import com.epam.esm.dao.UserDao;
-import com.epam.esm.dto.*;
+import com.epam.esm.dto.CertificateDtoWithTags;
+import com.epam.esm.dto.OrderDtoWithCertificatesWithTagsForCreation;
+import com.epam.esm.dto.TagDto;
+import com.epam.esm.dto.UserDto;
 import com.epam.esm.service.OrderService;
 import com.epam.esm.web.advice.ResourceAdvice;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.hibernate.Session;
-import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,25 +21,29 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import javax.persistence.EntityManager;
 import java.util.List;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ActiveProfiles("user")
 @AutoConfigureTestDatabase
 @SpringBootTest
-class OrderControllerTest {
+class OrderResourceTest {
 
   MockMvc mockMvc;
   @Autowired UserDao userDao;
   @Autowired OrderDao orderDao;
   @Autowired OrderService orderService;
-  @Autowired OrderController orderController;
-  @Autowired SessionFactory sessionFactory;
+  @Autowired OrderResource orderController;
+  @Autowired EntityManager entityManager;
   @Autowired ReloadableResourceBundleMessageSource messageSource;
+  @Autowired TransactionTemplate txTemplate;
 
   @BeforeEach
   public void setup() {
@@ -51,14 +56,10 @@ class OrderControllerTest {
 
   @AfterEach
   void setDown() {
-    try (Session session = sessionFactory.openSession()) {
-      session.beginTransaction();
-      String sql =
-              "DELETE FROM ordered_certificates_tags;DELETE FROM ordered_tags;DELETE FROM ordered_certificates;"
-                      + "DELETE FROM orders;DELETE FROM users;";
-      session.createNativeQuery(sql).executeUpdate();
-      session.getTransaction().commit();
-    }
+    String sql =
+        "DELETE FROM ordered_certificates_tags;DELETE FROM ordered_tags;DELETE FROM ordered_certificates;"
+            + "DELETE FROM orders;DELETE FROM users;";
+    txTemplate.execute(status -> entityManager.createNativeQuery(sql).executeUpdate());
   }
 
   @Test
@@ -98,11 +99,14 @@ class OrderControllerTest {
     order.setUserId(userId);
     orderService.create(order);
 
-    mockMvc.perform(get("/users/{userId}/orders", userId)).andExpect(status().isOk());
+    mockMvc
+        .perform(get("/users/{userId}/orders?page=1&size=10", userId))
+        .andExpect(status().isOk());
   }
 
   OrderDtoWithCertificatesWithTagsForCreation givenOrder() {
-    OrderDtoWithCertificatesWithTagsForCreation order = new OrderDtoWithCertificatesWithTagsForCreation();
+    OrderDtoWithCertificatesWithTagsForCreation order =
+        new OrderDtoWithCertificatesWithTagsForCreation();
     var certificate = givenCertificate();
     order.setCertificates(List.of(certificate));
     return order;
@@ -110,7 +114,6 @@ class OrderControllerTest {
 
   UserDto givenUser() {
     UserDto user = new UserDto();
-    user.setId(1L);
     user.setName("name");
     user.setSurname("surname");
     return user;
